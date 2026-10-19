@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build artifacts (main.js is committed intentionally for Obsidian plugin installs)
+*.js.map
+*.tsbuildinfo
+
+# Local plugin data / vault state
+data.json
+.obsidian/
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-error.log*
