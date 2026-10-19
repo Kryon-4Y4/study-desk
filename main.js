@@ -47,6 +47,7 @@ var DEFAULT_DATA = {
   flashcards: [],
   checkins: [],
   tracks: [],
+  schedules: [],
   settings: DEFAULT_SETTINGS
 };
 
@@ -71,6 +72,7 @@ function migrate(raw) {
   data.flashcards = Array.isArray(raw.flashcards) ? raw.flashcards : [];
   data.checkins = Array.isArray(raw.checkins) ? raw.checkins : [];
   data.tracks = Array.isArray(raw.tracks) ? raw.tracks : [];
+  data.schedules = Array.isArray(raw.schedules) ? raw.schedules : [];
   data.settings = { ...DEFAULT_SETTINGS, ...raw.settings || {} };
   return data;
 }
@@ -2823,6 +2825,7 @@ var StudyDeskPlugin = class extends import_obsidian10.Plugin {
       flashcards: [],
       checkins: [],
       tracks: [],
+      schedules: [],
       settings: {
         weightFlashcard: 0.5,
         weightCheckin: 0.5,

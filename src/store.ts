@@ -33,6 +33,7 @@ function migrate(raw: any): StudyDeskData {
   data.flashcards = Array.isArray(raw.flashcards) ? raw.flashcards : [];
   data.checkins = Array.isArray(raw.checkins) ? raw.checkins : [];
   data.tracks = Array.isArray(raw.tracks) ? raw.tracks : [];
+  data.schedules = Array.isArray(raw.schedules) ? raw.schedules : [];
   data.settings = { ...DEFAULT_SETTINGS, ...(raw.settings || {}) };
   // 未来版本升级在此追加：if (data.version < 2) { ... }
   return data;

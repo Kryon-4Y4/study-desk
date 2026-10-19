@@ -589,6 +589,60 @@
   color: var(--text-muted);
 }
 
+/* ===== 分级子表 ===== */
+.sd-hier-card {
+  margin-bottom: 14px;
+}
+.sd-hier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sd-hier-title {
+  font-weight: 650;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.sd-hier-badge {
+  font-weight: 700;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.sd-hier-badge.sd-good {
+  color: var(--color-green);
+}
+.sd-hier-badge.sd-mid {
+  color: var(--color-yellow);
+}
+.sd-hier-badge.sd-bad {
+  color: var(--color-red);
+}
+
+/* ===== 状态分布维度表 ===== */
+.sd-status-dot {
+  font-weight: 600;
+}
+.sd-status-dot.sd-good {
+  color: var(--color-green);
+}
+.sd-status-dot.sd-mid {
+  color: var(--color-yellow);
+}
+.sd-status-dot.sd-bad {
+  color: var(--color-red);
+}
+.sd-status-dot.sd-idle {
+  color: var(--text-muted);
+}
+.sd-status-bar-cell {
+  width: 40%;
+}
+.sd-status-bar-cell .sd-bar-track {
+  height: 8px;
+}
+
 /* ============ 打卡 ============ */
 .sd-checkin-grid {
   display: grid;
@@ -934,6 +988,19 @@
   background: #fff;
 }
 
+/* HTML 标签页视图（全屏 iframe） */
+.sd-html-view {
+  height: 100%;
+  padding: 0;
+}
+.sd-html-frame-full {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+  display: block;
+}
+
 .modal.sd-browser-modal {
   width: min(660px, 90vw);
 }
@@ -945,6 +1012,31 @@
 .sd-confirm-text {
   margin: 0 0 8px;
   font-size: 13px;
+}
+
+/* 导入导图预览 */
+.modal.sd-import-modal {
+  width: min(560px, 92vw);
+}
+.sd-import-preview {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 12px;
+  background: var(--background-primary);
+}
+.sd-import-row {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sd-import-row:hover {
+  background: var(--background-modifier-hover);
 }
 
 /* ============ 精致滚动条 ============ */

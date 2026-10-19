@@ -7,7 +7,10 @@ import {
   checkinsThisMonth,
   Mastery,
 } from "./aggregation";
-import { getRootNodes, collectSubtreeIds } from "../knowledge/tree";
+import {
+  getRootNodes,
+  collectSubtreeIds,
+} from "../knowledge/tree";
 
 export class DashboardPage extends PageComponent {
   render(container: HTMLElement): void {
@@ -18,7 +21,7 @@ export class DashboardPage extends PageComponent {
     const mastery = computeMastery(this.plugin.data);
     const masteryMap = new Map(mastery.map((m) => [m.knowledgeId, m]));
 
-    container.createEl("h2", { text: "记分仪表盘" });
+    container.createEl("h2", { text: "Dashboard" });
     container.createEl("div", {
       cls: "sd-subtitle",
       text: "掌握度 = 闪卡正确率 + 打卡均分，按知识结构聚合",
@@ -26,9 +29,11 @@ export class DashboardPage extends PageComponent {
 
     this.renderKPIs(container, mastery);
     this.renderDomains(container, masteryMap);
-    this.renderTable(container, masteryMap);
+    this.renderStatus(container, masteryMap);
+    this.renderActivity(container);
   }
 
+  // ===== KPI 卡 =====
   private renderKPIs(container: HTMLElement, mastery: Mastery[]): void {
     const grid = container.createDiv({ cls: "sd-kpis" });
     const data = this.plugin.data;
@@ -61,6 +66,7 @@ export class DashboardPage extends PageComponent {
     card.createDiv({ cls: "sd-kpi-sub", text: sub });
   }
 
+  // ===== 各领域掌握度（横向条形图） =====
   private renderDomains(
     container: HTMLElement,
     masteryMap: Map<string, Mastery>
@@ -71,7 +77,7 @@ export class DashboardPage extends PageComponent {
     if (roots.length === 0) {
       container.createEl("div", {
         cls: "sd-empty",
-        text: "尚未配置知识结构。请点击左侧「知识 Wiki」创建知识点。",
+        text: "尚未配置知识结构。请到「知识 Wiki」创建知识点。",
       });
       return;
     }
@@ -100,63 +106,95 @@ export class DashboardPage extends PageComponent {
     }
   }
 
-  private renderTable(
+  // ===== 掌握状态分布（维度表） =====
+  private renderStatus(
     container: HTMLElement,
     masteryMap: Map<string, Mastery>
   ): void {
-    container.createEl("h3", { cls: "sd-section", text: "知识点明细" });
+    container.createEl("h3", { cls: "sd-section", text: "掌握状态分布" });
 
     const nodes = this.plugin.data.knowledgeTree;
-    if (nodes.length === 0) {
-      container.createEl("div", { cls: "sd-empty", text: "暂无知识点" });
-      return;
+    const buckets = [
+      { label: "已掌握", cls: "sd-good", count: 0 },
+      { label: "需巩固", cls: "sd-mid", count: 0 },
+      { label: "待加强", cls: "sd-bad", count: 0 },
+      { label: "待开始", cls: "sd-idle", count: 0 },
+    ];
+    for (const n of nodes) {
+      const m = masteryMap.get(n.id);
+      if (!m || !this.hasData(m)) {
+        buckets[3].count++;
+      } else if (m.score >= 70) {
+        buckets[0].count++;
+      } else if (m.score >= 40) {
+        buckets[1].count++;
+      } else {
+        buckets[2].count++;
+      }
     }
+    const total = nodes.length || 1;
 
-    const table = container.createEl("table", { cls: "sd-table" });
+    const card = container.createDiv({ cls: "sd-card" });
+    const table = card.createEl("table", { cls: "sd-table" });
     const thead = table.createEl("thead");
     const hr = thead.createEl("tr");
-    ["知识点", "掌握度", "闪卡正确率", "打卡均分", "状态"].forEach((t) =>
-      hr.createEl("th", { text: t })
-    );
+    ["状态", "数量", "占比", "分布"].forEach((t) => hr.createEl("th", { text: t }));
     const tbody = table.createEl("tbody");
 
-    const flatten: { node: { id: string; title: string }; depth: number }[] =
-      [];
-    const walk = (parentId: string | null, depth: number) => {
-      const children = nodes
-        .filter((n) => n.parentId === parentId)
-        .sort((a, b) => a.order - b.order);
-      for (const c of children) {
-        flatten.push({ node: c, depth });
-        walk(c.id, depth + 1);
-      }
-    };
-    walk(null, 0);
-
-    for (const { node, depth } of flatten) {
-      const m = masteryMap.get(node.id);
+    for (const b of buckets) {
+      const pct = Math.round((b.count / total) * 100);
       const tr = tbody.createEl("tr");
-      tr.createEl("td", {
-        cls: "sd-td-name",
-        attr: { style: `padding-left:${12 + depth * 18}px` },
-        text: node.title,
-      });
-
-      const score = m ? m.score : 0;
-      const hasData = m && this.hasData(m);
-      tr.createEl("td", { text: hasData ? `${score}%` : "—" });
-      tr.createEl("td", {
-        text: m?.flashcardRate != null ? `${m.flashcardRate}%` : "—",
-      });
-      tr.createEl("td", {
-        text: m?.checkinAvg != null ? String(m.checkinAvg) : "—",
-      });
-
       const statusTd = tr.createEl("td");
       statusTd.createSpan({
-        cls: "sd-pill " + (hasData ? this.scoreClass(score) : "sd-pill-idle"),
-        text: hasData ? this.statusText(score) : "待开始",
+        cls: b.cls === "sd-idle" ? "sd-status-dot sd-idle" : "sd-status-dot " + b.cls,
+        text: b.label,
       });
+      tr.createEl("td", { text: String(b.count) });
+      tr.createEl("td", { text: `${pct}%` });
+      const barTd = tr.createEl("td", { cls: "sd-status-bar-cell" });
+      const track = barTd.createDiv({ cls: "sd-bar-track" });
+      track.createDiv({
+        cls: "sd-bar-fill " + (b.cls === "sd-idle" ? "" : b.cls),
+        attr: { style: `width:${pct}%` },
+      });
+    }
+  }
+
+  // ===== 学习活动概览（维度表） =====
+  private renderActivity(container: HTMLElement): void {
+    container.createEl("h3", { cls: "sd-section", text: "学习活动概览" });
+
+    const data = this.plugin.data;
+    const cards = data.flashcards;
+    const totalReps = cards.reduce((s, c) => s + c.reps, 0);
+    const totalCorrect = cards.reduce((s, c) => s + c.correctCount, 0);
+    const rate = totalReps
+      ? Math.round((totalCorrect / totalReps) * 100) + "%"
+      : "—";
+
+    const checkins = data.checkins;
+    const pending = checkins.filter((c) => c.status === "pending").length;
+    const graded = checkins.filter((c) => c.status === "graded").length;
+
+    const rows: [string, string][] = [
+      ["闪卡 · 卡片总数", String(cards.length)],
+      ["闪卡 · 今日待复习", String(dueCardsToday(data))],
+      ["闪卡 · 平均正确率", rate],
+      ["打卡 · 记录总数", String(checkins.length)],
+      ["打卡 · 待评分", String(pending)],
+      ["打卡 · 已评分", String(graded)],
+    ];
+
+    const card = container.createDiv({ cls: "sd-card" });
+    const table = card.createEl("table", { cls: "sd-table" });
+    const thead = table.createEl("thead");
+    const hr = thead.createEl("tr");
+    ["维度", "数值"].forEach((t) => hr.createEl("th", { text: t }));
+    const tbody = table.createEl("tbody");
+    for (const [dim, val] of rows) {
+      const tr = tbody.createEl("tr");
+      tr.createEl("td", { text: dim });
+      tr.createEl("td", { text: val });
     }
   }
 

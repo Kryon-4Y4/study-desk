@@ -144,3 +144,42 @@ export function setNodeNotes(
 ): KnowledgeNode[] {
   return nodes.map((n) => (n.id === id ? { ...n, notePaths } : n));
 }
+
+/**
+ * 解析 Markdown 标题层级为知识点节点：
+ * `# ` 为根、`## ` 为子、`### ` 为孙……逐级构建树，notePaths 留空。
+ * 仅识别 1~6 级标题（# 到 ######），其余内容忽略。
+ */
+export function markdownToNodes(md: string): KnowledgeNode[] {
+  const nodes: KnowledgeNode[] = [];
+  const stack: { id: string; level: number }[] = [];
+  const orderMap = new Map<string, number>(); // parentKey -> 下一个 order
+
+  for (const raw of md.split(/\r?\n/)) {
+    const m = raw.match(/^(#{1,6})\s+(.+)$/);
+    if (!m) continue;
+    const level = m[1].length;
+    const title = m[2].replace(/\s+#+\s*$/, "").trim();
+    if (!title) continue;
+
+    // 弹出层级 >= 当前的栈项，定位父节点
+    while (stack.length && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+    const parentId = stack.length ? stack[stack.length - 1].id : null;
+    const parentKey = parentId ?? "__root__";
+    const order = orderMap.get(parentKey) ?? 0;
+    orderMap.set(parentKey, order + 1);
+
+    const node: KnowledgeNode = {
+      id: genId(),
+      parentId,
+      title,
+      order,
+      notePaths: [],
+    };
+    nodes.push(node);
+    stack.push({ id: node.id, level });
+  }
+  return nodes;
+}

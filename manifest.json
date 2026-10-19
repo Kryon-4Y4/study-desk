@@ -1,7 +1,7 @@
 {
   "id": "study-desk",
   "name": "音乐学习台",
-  "version": "0.4.0",
+  "version": "0.4.4",
   "minAppVersion": "1.5.0",
   "description": "音乐学习台：知识 Wiki、闪卡复习、练习打卡、记分仪表盘。基于 Obsidian 的个人音乐学习管理插件。",
   "author": "Kryon",

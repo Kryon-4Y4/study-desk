@@ -3,6 +3,8 @@ import {
   Notice,
   FuzzySuggestModal,
   TFile,
+  Modal,
+  App,
   setIcon,
 } from "obsidian";
 import type StudyDeskPlugin from "../../main";
@@ -40,6 +42,9 @@ export class WikiPage extends PageComponent {
       }
       this.addChildNode(this.selectedId);
     });
+
+    const btnImport = toolbar.createEl("button", { text: "导入导图" });
+    btnImport.addEventListener("click", () => this.importIndex());
 
     const grid = container.createDiv({ cls: "sd-wiki-grid" });
     const treePane = grid.createDiv({ cls: "sd-wiki-tree" });
@@ -355,6 +360,32 @@ export class WikiPage extends PageComponent {
     this.plugin.persist();
     this.render(this.container);
   }
+
+  /** 导入预设知识点导图（md 标题层级 → 知识树） */
+  private importIndex(): void {
+    new ImportFileModal(this.plugin.app, async (file) => {
+      const md = await this.plugin.app.vault.adapter.read(file.path);
+      const nodes = tree.markdownToNodes(md);
+      if (nodes.length === 0) {
+        new Notice("该文件未解析到标题层级（# 标题）");
+        return;
+      }
+      new ImportPreviewModal(this.plugin.app, file.name, nodes, (mode) => {
+        if (mode === "merge") {
+          this.plugin.data.knowledgeTree = [
+            ...this.plugin.data.knowledgeTree,
+            ...nodes,
+          ];
+        } else {
+          this.plugin.data.knowledgeTree = nodes;
+        }
+        this.selectedId = null;
+        this.plugin.persist();
+        new Notice(`已导入 ${nodes.length} 个知识点`);
+        this.render(this.container);
+      }).open();
+    }).open();
+  }
 }
 
 class NotePickerModal extends FuzzySuggestModal<TFile> {
@@ -376,5 +407,110 @@ class NotePickerModal extends FuzzySuggestModal<TFile> {
 
   onChooseItem(file: TFile): void {
     this.onChoose(file);
+  }
+}
+
+// ===== 导入导图：选择 md 文件 =====
+class ImportFileModal extends FuzzySuggestModal<TFile> {
+  onChoose: (file: TFile) => void;
+
+  constructor(app: App, onChoose: (file: TFile) => void) {
+    super(app);
+    this.onChoose = onChoose;
+    this.setPlaceholder("选择预设知识点导图（如 index.md）…");
+  }
+
+  getItems(): TFile[] {
+    return this.app.vault.getMarkdownFiles();
+  }
+
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  onChooseItem(file: TFile): void {
+    this.onChoose(file);
+  }
+}
+
+// ===== 导入预览 + 合并/覆盖确认 =====
+class ImportPreviewModal extends Modal {
+  fileName: string;
+  nodes: KnowledgeNode[];
+  onConfirm: (mode: "merge" | "replace") => void;
+
+  constructor(
+    app: App,
+    fileName: string,
+    nodes: KnowledgeNode[],
+    onConfirm: (mode: "merge" | "replace") => void
+  ) {
+    super(app);
+    this.fileName = fileName;
+    this.nodes = nodes;
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("sd-import-modal");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl("h3", { text: "导入知识点导图" });
+    contentEl.createEl("div", {
+      cls: "sd-subtitle",
+      text: `${this.fileName} · 解析出 ${this.nodes.length} 个知识点`,
+    });
+
+    const preview = contentEl.createDiv({ cls: "sd-import-preview" });
+    this.renderPreview(preview);
+
+    contentEl.createEl("p", {
+      cls: "sd-confirm-text",
+      text: "合并导入：追加为新的根节点；覆盖导入：清空现有知识树后导入。",
+    });
+
+    const actions = contentEl.createDiv({ cls: "sd-actions" });
+    const btnMerge = actions.createEl("button", {
+      cls: "mod-cta",
+      text: "合并导入",
+    });
+    btnMerge.addEventListener("click", () => {
+      this.onConfirm("merge");
+      this.close();
+    });
+    const btnReplace = actions.createEl("button", { text: "覆盖导入" });
+    btnReplace.addEventListener("click", () => {
+      this.onConfirm("replace");
+      this.close();
+    });
+    actions
+      .createEl("button", { text: "取消" })
+      .addEventListener("click", () => this.close());
+  }
+
+  private renderPreview(preview: HTMLElement): void {
+    const byParent = new Map<string | null, KnowledgeNode[]>();
+    for (const n of this.nodes) {
+      const key = n.parentId;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(n);
+    }
+    for (const arr of byParent.values()) arr.sort((a, b) => a.order - b.order);
+
+    const walk = (parentId: string | null, depth: number) => {
+      const children = byParent.get(parentId) || [];
+      for (const c of children) {
+        const row = preview.createDiv({ cls: "sd-import-row" });
+        row.style.paddingLeft = `${depth * 16}px`;
+        row.createSpan({ text: c.title });
+        walk(c.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }

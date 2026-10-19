@@ -1,10 +1,16 @@
-import { App, Modal, Notice, TFile } from "obsidian";
+import { App, Notice, TFile } from "obsidian";
+import { VIEW_TYPE_HTML } from "../view/HtmlFileView";
 
-/** 按扩展名分派打开 vault 内文件：md/pdf/图片/音视频用内置查看器，html 用 iframe 预览 */
+/** 按扩展名分派打开 vault 内文件：html 在新标签页内置预览，其余用 Obsidian 查看器 */
 export function openVaultFile(app: App, path: string): void {
   const ext = path.split(".").pop()?.toLowerCase();
   if (ext === "html" || ext === "htm") {
-    new HtmlPreviewModal(app, path).open();
+    // 在 Obsidian 主工作区新开一个标签页承载 iframe
+    app.workspace.getLeaf(true).setViewState({
+      type: VIEW_TYPE_HTML,
+      active: true,
+      state: { path },
+    });
     return;
   }
   const file = app.vault.getAbstractFileByPath(path);
@@ -44,31 +50,4 @@ export async function uniqueName(
 /** 判断路径片段是否为隐藏项（.obsidian/.trash/.DS_Store 等） */
 export function isHidden(name: string): boolean {
   return name.startsWith(".");
-}
-
-/** HTML 内置预览弹窗 */
-export class HtmlPreviewModal extends Modal {
-  filePath: string;
-
-  constructor(app: App, filePath: string) {
-    super(app);
-    this.filePath = filePath;
-  }
-
-  onOpen(): void {
-    this.modalEl.addClass("sd-html-modal");
-    this.titleEl.setText(this.filePath.split("/").pop() || this.filePath);
-
-    const { contentEl } = this;
-    contentEl.empty();
-    const url = this.app.vault.adapter.getResourcePath(this.filePath);
-    contentEl.createEl("iframe", {
-      cls: "sd-html-frame",
-      attr: { src: url },
-    });
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
-  }
 }

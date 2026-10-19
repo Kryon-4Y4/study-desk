@@ -16,6 +16,7 @@ export default class StudyDeskPlugin extends Plugin {
     flashcards: [],
     checkins: [],
     tracks: [],
+    schedules: [],
     settings: {
       weightFlashcard: 0.5,
       weightCheckin: 0.5,

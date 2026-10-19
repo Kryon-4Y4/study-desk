@@ -61,6 +61,25 @@ export interface Track {
   createdAt: number;
 }
 
+/** 日程预设类型：null=通用，checkin=打卡练习 */
+export type SchedulePreset = "checkin" | null;
+
+/** 日程 */
+export interface Schedule {
+  id: string;
+  title: string;
+  /** 日程日期时间戳（ms） */
+  date: number;
+  /** 标签（可多个，自定义） */
+  tags: string[];
+  /** 预设类型 */
+  preset: SchedulePreset;
+  /** 是否已完成 */
+  done: boolean;
+  note?: string;
+  createdAt: number;
+}
+
 /** 设置 */
 export interface Settings {
   /** 掌握度中闪卡的权重（0~1） */
@@ -80,6 +99,7 @@ export interface StudyDeskData {
   flashcards: Flashcard[];
   checkins: CheckinRecord[];
   tracks: Track[];
+  schedules: Schedule[];
   settings: Settings;
 }
 
@@ -98,5 +118,6 @@ export const DEFAULT_DATA: StudyDeskData = {
   flashcards: [],
   checkins: [],
   tracks: [],
+  schedules: [],
   settings: DEFAULT_SETTINGS,
 };
