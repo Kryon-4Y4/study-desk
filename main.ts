@@ -7,6 +7,7 @@ import {
 import { StudyDeskData } from "./src/types";
 import { loadPluginData, savePluginData } from "./src/store";
 import { StudyDeskView, VIEW_TYPE_STUDY_DESK } from "./src/view/StudyDeskView";
+import { HtmlFileView, VIEW_TYPE_HTML } from "./src/view/HtmlFileView";
 
 export default class StudyDeskPlugin extends Plugin {
   data: StudyDeskData = {
@@ -30,6 +31,10 @@ export default class StudyDeskPlugin extends Plugin {
       VIEW_TYPE_STUDY_DESK,
       (leaf) => new StudyDeskView(leaf, this)
     );
+    this.registerView(
+      VIEW_TYPE_HTML,
+      (leaf) => new HtmlFileView(leaf)
+    );
 
     this.addSettingTab(new StudyDeskSettingTab(this.app, this));
 
@@ -38,7 +43,7 @@ export default class StudyDeskPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-study-desk",
+      id: "open",
       name: "打开音乐学习台",
       callback: () => this.activateView(),
     });

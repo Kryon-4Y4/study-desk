@@ -31,7 +31,7 @@ __export(main_exports, {
   default: () => StudyDeskPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/types.ts
 var DATA_VERSION = 1;
@@ -76,7 +76,7 @@ function migrate(raw) {
 }
 
 // src/view/StudyDeskView.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/view/PageComponent.ts
 var PageComponent = class {
@@ -247,6 +247,38 @@ function reorderNode(nodes, id, delta) {
 function setNodeNotes(nodes, id, notePaths) {
   return nodes.map((n) => n.id === id ? { ...n, notePaths } : n);
 }
+function markdownToNodes(md) {
+  var _a;
+  const nodes = [];
+  const stack = [];
+  const orderMap = /* @__PURE__ */ new Map();
+  for (const raw of md.split(/\r?\n/)) {
+    const m2 = raw.match(/^(#{1,6})\s+(.+)$/);
+    if (!m2)
+      continue;
+    const level = m2[1].length;
+    const title = m2[2].replace(/\s+#+\s*$/, "").trim();
+    if (!title)
+      continue;
+    while (stack.length && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+    const parentId = stack.length ? stack[stack.length - 1].id : null;
+    const parentKey = parentId != null ? parentId : "__root__";
+    const order = (_a = orderMap.get(parentKey)) != null ? _a : 0;
+    orderMap.set(parentKey, order + 1);
+    const node = {
+      id: genId(),
+      parentId,
+      title,
+      order,
+      notePaths: []
+    };
+    nodes.push(node);
+    stack.push({ id: node.id, level });
+  }
+  return nodes;
+}
 
 // src/dashboard/DashboardView.ts
 var DashboardPage = class extends PageComponent {
@@ -256,15 +288,17 @@ var DashboardPage = class extends PageComponent {
     container.addClass("study-desk-page");
     const mastery = computeMastery(this.plugin.data);
     const masteryMap = new Map(mastery.map((m2) => [m2.knowledgeId, m2]));
-    container.createEl("h2", { text: "\u8BB0\u5206\u4EEA\u8868\u76D8" });
+    container.createEl("h2", { text: "Dashboard" });
     container.createEl("div", {
       cls: "sd-subtitle",
       text: "\u638C\u63E1\u5EA6 = \u95EA\u5361\u6B63\u786E\u7387 + \u6253\u5361\u5747\u5206\uFF0C\u6309\u77E5\u8BC6\u7ED3\u6784\u805A\u5408"
     });
     this.renderKPIs(container, mastery);
     this.renderDomains(container, masteryMap);
-    this.renderTable(container, masteryMap);
+    this.renderStatus(container, masteryMap);
+    this.renderActivity(container);
   }
+  // ===== KPI 卡 =====
   renderKPIs(container, mastery) {
     const grid = container.createDiv({ cls: "sd-kpis" });
     const data = this.plugin.data;
@@ -289,13 +323,14 @@ var DashboardPage = class extends PageComponent {
     card.createDiv({ cls: "sd-kpi-value", text: value });
     card.createDiv({ cls: "sd-kpi-sub", text: sub });
   }
+  // ===== 各领域掌握度（横向条形图） =====
   renderDomains(container, masteryMap) {
     container.createEl("h3", { cls: "sd-section", text: "\u5404\u9886\u57DF\u638C\u63E1\u5EA6" });
     const roots = getRootNodes(this.plugin.data.knowledgeTree);
     if (roots.length === 0) {
       container.createEl("div", {
         cls: "sd-empty",
-        text: "\u5C1A\u672A\u914D\u7F6E\u77E5\u8BC6\u7ED3\u6784\u3002\u8BF7\u70B9\u51FB\u5DE6\u4FA7\u300C\u77E5\u8BC6 Wiki\u300D\u521B\u5EFA\u77E5\u8BC6\u70B9\u3002"
+        text: "\u5C1A\u672A\u914D\u7F6E\u77E5\u8BC6\u7ED3\u6784\u3002\u8BF7\u5230\u300C\u77E5\u8BC6 Wiki\u300D\u521B\u5EFA\u77E5\u8BC6\u70B9\u3002"
       });
       return;
     }
@@ -316,51 +351,82 @@ var DashboardPage = class extends PageComponent {
       row.createSpan({ cls: "sd-bar-val", text: `${avg}%` });
     }
   }
-  renderTable(container, masteryMap) {
-    container.createEl("h3", { cls: "sd-section", text: "\u77E5\u8BC6\u70B9\u660E\u7EC6" });
+  // ===== 掌握状态分布（维度表） =====
+  renderStatus(container, masteryMap) {
+    container.createEl("h3", { cls: "sd-section", text: "\u638C\u63E1\u72B6\u6001\u5206\u5E03" });
     const nodes = this.plugin.data.knowledgeTree;
-    if (nodes.length === 0) {
-      container.createEl("div", { cls: "sd-empty", text: "\u6682\u65E0\u77E5\u8BC6\u70B9" });
-      return;
+    const buckets = [
+      { label: "\u5DF2\u638C\u63E1", cls: "sd-good", count: 0 },
+      { label: "\u9700\u5DE9\u56FA", cls: "sd-mid", count: 0 },
+      { label: "\u5F85\u52A0\u5F3A", cls: "sd-bad", count: 0 },
+      { label: "\u5F85\u5F00\u59CB", cls: "sd-idle", count: 0 }
+    ];
+    for (const n of nodes) {
+      const m2 = masteryMap.get(n.id);
+      if (!m2 || !this.hasData(m2)) {
+        buckets[3].count++;
+      } else if (m2.score >= 70) {
+        buckets[0].count++;
+      } else if (m2.score >= 40) {
+        buckets[1].count++;
+      } else {
+        buckets[2].count++;
+      }
     }
-    const table = container.createEl("table", { cls: "sd-table" });
+    const total = nodes.length || 1;
+    const card = container.createDiv({ cls: "sd-card" });
+    const table = card.createEl("table", { cls: "sd-table" });
     const thead = table.createEl("thead");
     const hr = thead.createEl("tr");
-    ["\u77E5\u8BC6\u70B9", "\u638C\u63E1\u5EA6", "\u95EA\u5361\u6B63\u786E\u7387", "\u6253\u5361\u5747\u5206", "\u72B6\u6001"].forEach(
-      (t) => hr.createEl("th", { text: t })
-    );
+    ["\u72B6\u6001", "\u6570\u91CF", "\u5360\u6BD4", "\u5206\u5E03"].forEach((t) => hr.createEl("th", { text: t }));
     const tbody = table.createEl("tbody");
-    const flatten = [];
-    const walk = (parentId, depth) => {
-      const children = nodes.filter((n) => n.parentId === parentId).sort((a, b2) => a.order - b2.order);
-      for (const c2 of children) {
-        flatten.push({ node: c2, depth });
-        walk(c2.id, depth + 1);
-      }
-    };
-    walk(null, 0);
-    for (const { node, depth } of flatten) {
-      const m2 = masteryMap.get(node.id);
+    for (const b2 of buckets) {
+      const pct = Math.round(b2.count / total * 100);
       const tr = tbody.createEl("tr");
-      tr.createEl("td", {
-        cls: "sd-td-name",
-        attr: { style: `padding-left:${12 + depth * 18}px` },
-        text: node.title
-      });
-      const score = m2 ? m2.score : 0;
-      const hasData = m2 && this.hasData(m2);
-      tr.createEl("td", { text: hasData ? `${score}%` : "\u2014" });
-      tr.createEl("td", {
-        text: (m2 == null ? void 0 : m2.flashcardRate) != null ? `${m2.flashcardRate}%` : "\u2014"
-      });
-      tr.createEl("td", {
-        text: (m2 == null ? void 0 : m2.checkinAvg) != null ? String(m2.checkinAvg) : "\u2014"
-      });
       const statusTd = tr.createEl("td");
       statusTd.createSpan({
-        cls: "sd-pill " + (hasData ? this.scoreClass(score) : "sd-pill-idle"),
-        text: hasData ? this.statusText(score) : "\u5F85\u5F00\u59CB"
+        cls: b2.cls === "sd-idle" ? "sd-status-dot sd-idle" : "sd-status-dot " + b2.cls,
+        text: b2.label
       });
+      tr.createEl("td", { text: String(b2.count) });
+      tr.createEl("td", { text: `${pct}%` });
+      const barTd = tr.createEl("td", { cls: "sd-status-bar-cell" });
+      const track = barTd.createDiv({ cls: "sd-bar-track" });
+      track.createDiv({
+        cls: "sd-bar-fill " + (b2.cls === "sd-idle" ? "" : b2.cls),
+        attr: { style: `width:${pct}%` }
+      });
+    }
+  }
+  // ===== 学习活动概览（维度表） =====
+  renderActivity(container) {
+    container.createEl("h3", { cls: "sd-section", text: "\u5B66\u4E60\u6D3B\u52A8\u6982\u89C8" });
+    const data = this.plugin.data;
+    const cards = data.flashcards;
+    const totalReps = cards.reduce((s, c2) => s + c2.reps, 0);
+    const totalCorrect = cards.reduce((s, c2) => s + c2.correctCount, 0);
+    const rate = totalReps ? Math.round(totalCorrect / totalReps * 100) + "%" : "\u2014";
+    const checkins = data.checkins;
+    const pending = checkins.filter((c2) => c2.status === "pending").length;
+    const graded = checkins.filter((c2) => c2.status === "graded").length;
+    const rows = [
+      ["\u95EA\u5361 \xB7 \u5361\u7247\u603B\u6570", String(cards.length)],
+      ["\u95EA\u5361 \xB7 \u4ECA\u65E5\u5F85\u590D\u4E60", String(dueCardsToday(data))],
+      ["\u95EA\u5361 \xB7 \u5E73\u5747\u6B63\u786E\u7387", rate],
+      ["\u6253\u5361 \xB7 \u8BB0\u5F55\u603B\u6570", String(checkins.length)],
+      ["\u6253\u5361 \xB7 \u5F85\u8BC4\u5206", String(pending)],
+      ["\u6253\u5361 \xB7 \u5DF2\u8BC4\u5206", String(graded)]
+    ];
+    const card = container.createDiv({ cls: "sd-card" });
+    const table = card.createEl("table", { cls: "sd-table" });
+    const thead = table.createEl("thead");
+    const hr = thead.createEl("tr");
+    ["\u7EF4\u5EA6", "\u6570\u503C"].forEach((t) => hr.createEl("th", { text: t }));
+    const tbody = table.createEl("tbody");
+    for (const [dim, val] of rows) {
+      const tr = tbody.createEl("tr");
+      tr.createEl("td", { text: dim });
+      tr.createEl("td", { text: val });
     }
   }
   hasData(m2) {
@@ -413,6 +479,8 @@ var WikiPage = class extends PageComponent {
       }
       this.addChildNode(this.selectedId);
     });
+    const btnImport = toolbar.createEl("button", { text: "\u5BFC\u5165\u5BFC\u56FE" });
+    btnImport.addEventListener("click", () => this.importIndex());
     const grid = container.createDiv({ cls: "sd-wiki-grid" });
     const treePane = grid.createDiv({ cls: "sd-wiki-tree" });
     const editPane = grid.createDiv({ cls: "sd-wiki-edit" });
@@ -677,6 +745,31 @@ var WikiPage = class extends PageComponent {
     this.plugin.persist();
     this.render(this.container);
   }
+  /** 导入预设知识点导图（md 标题层级 → 知识树） */
+  importIndex() {
+    new ImportFileModal(this.plugin.app, async (file) => {
+      const md = await this.plugin.app.vault.adapter.read(file.path);
+      const nodes = markdownToNodes(md);
+      if (nodes.length === 0) {
+        new import_obsidian.Notice("\u8BE5\u6587\u4EF6\u672A\u89E3\u6790\u5230\u6807\u9898\u5C42\u7EA7\uFF08# \u6807\u9898\uFF09");
+        return;
+      }
+      new ImportPreviewModal(this.plugin.app, file.name, nodes, (mode) => {
+        if (mode === "merge") {
+          this.plugin.data.knowledgeTree = [
+            ...this.plugin.data.knowledgeTree,
+            ...nodes
+          ];
+        } else {
+          this.plugin.data.knowledgeTree = nodes;
+        }
+        this.selectedId = null;
+        this.plugin.persist();
+        new import_obsidian.Notice(`\u5DF2\u5BFC\u5165 ${nodes.length} \u4E2A\u77E5\u8BC6\u70B9`);
+        this.render(this.container);
+      }).open();
+    }).open();
+  }
 };
 var NotePickerModal = class extends import_obsidian.FuzzySuggestModal {
   constructor(app, onChoose) {
@@ -692,6 +785,85 @@ var NotePickerModal = class extends import_obsidian.FuzzySuggestModal {
   }
   onChooseItem(file) {
     this.onChoose(file);
+  }
+};
+var ImportFileModal = class extends import_obsidian.FuzzySuggestModal {
+  constructor(app, onChoose) {
+    super(app);
+    this.onChoose = onChoose;
+    this.setPlaceholder("\u9009\u62E9\u9884\u8BBE\u77E5\u8BC6\u70B9\u5BFC\u56FE\uFF08\u5982 index.md\uFF09\u2026");
+  }
+  getItems() {
+    return this.app.vault.getMarkdownFiles();
+  }
+  getItemText(file) {
+    return file.path;
+  }
+  onChooseItem(file) {
+    this.onChoose(file);
+  }
+};
+var ImportPreviewModal = class extends import_obsidian.Modal {
+  constructor(app, fileName, nodes, onConfirm) {
+    super(app);
+    this.fileName = fileName;
+    this.nodes = nodes;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    this.modalEl.addClass("sd-import-modal");
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: "\u5BFC\u5165\u77E5\u8BC6\u70B9\u5BFC\u56FE" });
+    contentEl.createEl("div", {
+      cls: "sd-subtitle",
+      text: `${this.fileName} \xB7 \u89E3\u6790\u51FA ${this.nodes.length} \u4E2A\u77E5\u8BC6\u70B9`
+    });
+    const preview = contentEl.createDiv({ cls: "sd-import-preview" });
+    this.renderPreview(preview);
+    contentEl.createEl("p", {
+      cls: "sd-confirm-text",
+      text: "\u5408\u5E76\u5BFC\u5165\uFF1A\u8FFD\u52A0\u4E3A\u65B0\u7684\u6839\u8282\u70B9\uFF1B\u8986\u76D6\u5BFC\u5165\uFF1A\u6E05\u7A7A\u73B0\u6709\u77E5\u8BC6\u6811\u540E\u5BFC\u5165\u3002"
+    });
+    const actions = contentEl.createDiv({ cls: "sd-actions" });
+    const btnMerge = actions.createEl("button", {
+      cls: "mod-cta",
+      text: "\u5408\u5E76\u5BFC\u5165"
+    });
+    btnMerge.addEventListener("click", () => {
+      this.onConfirm("merge");
+      this.close();
+    });
+    const btnReplace = actions.createEl("button", { text: "\u8986\u76D6\u5BFC\u5165" });
+    btnReplace.addEventListener("click", () => {
+      this.onConfirm("replace");
+      this.close();
+    });
+    actions.createEl("button", { text: "\u53D6\u6D88" }).addEventListener("click", () => this.close());
+  }
+  renderPreview(preview) {
+    const byParent = /* @__PURE__ */ new Map();
+    for (const n of this.nodes) {
+      const key = n.parentId;
+      if (!byParent.has(key))
+        byParent.set(key, []);
+      byParent.get(key).push(n);
+    }
+    for (const arr of byParent.values())
+      arr.sort((a, b2) => a.order - b2.order);
+    const walk = (parentId, depth) => {
+      const children = byParent.get(parentId) || [];
+      for (const c2 of children) {
+        const row = preview.createDiv({ cls: "sd-import-row" });
+        row.style.paddingLeft = `${depth * 16}px`;
+        row.createSpan({ text: c2.title });
+        walk(c2.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+  }
+  onClose() {
+    this.contentEl.empty();
   }
 };
 
@@ -1869,22 +2041,73 @@ var GradeModal = class extends import_obsidian3.Modal {
 };
 
 // src/track/TrackPage.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 
 // src/utils/vaultFiles.ts
+var import_obsidian5 = require("obsidian");
+
+// src/view/HtmlFileView.ts
 var import_obsidian4 = require("obsidian");
+var VIEW_TYPE_HTML = "study-desk-html";
+var HtmlFileView = class extends import_obsidian4.ItemView {
+  constructor(leaf) {
+    super(leaf);
+    this.path = null;
+  }
+  getViewType() {
+    return VIEW_TYPE_HTML;
+  }
+  getDisplayText() {
+    return this.path ? this.path.split("/").pop() : "\u7F51\u9875\u9884\u89C8";
+  }
+  getIcon() {
+    return "globe";
+  }
+  async setState(state, result) {
+    if (state == null ? void 0 : state.path)
+      this.path = state.path;
+    await super.setState(state, result);
+    this.render();
+  }
+  async onOpen() {
+    this.render();
+  }
+  async onClose() {
+    this.contentEl.empty();
+  }
+  render() {
+    const container = this.contentEl;
+    container.empty();
+    container.addClass("sd-html-view");
+    if (!this.path) {
+      container.createEl("div", { cls: "sd-empty", text: "\u672A\u6307\u5B9A\u6587\u4EF6" });
+      return;
+    }
+    const url = this.app.vault.adapter.getResourcePath(this.path);
+    container.createEl("iframe", {
+      cls: "sd-html-frame-full",
+      attr: { src: url }
+    });
+  }
+};
+
+// src/utils/vaultFiles.ts
 function openVaultFile(app, path) {
   var _a;
   const ext = (_a = path.split(".").pop()) == null ? void 0 : _a.toLowerCase();
   if (ext === "html" || ext === "htm") {
-    new HtmlPreviewModal(app, path).open();
+    app.workspace.getLeaf(true).setViewState({
+      type: VIEW_TYPE_HTML,
+      active: true,
+      state: { path }
+    });
     return;
   }
   const file = app.vault.getAbstractFileByPath(path);
-  if (file instanceof import_obsidian4.TFile) {
+  if (file instanceof import_obsidian5.TFile) {
     app.workspace.getLeaf(true).openFile(file);
   } else {
-    new import_obsidian4.Notice("\u8BE5\u6587\u4EF6\u7C7B\u578B\u6682\u4E0D\u652F\u6301\u5728 Obsidian \u5185\u6253\u5F00");
+    new import_obsidian5.Notice("\u8BE5\u6587\u4EF6\u7C7B\u578B\u6682\u4E0D\u652F\u6301\u5728 Obsidian \u5185\u6253\u5F00");
   }
 }
 async function ensureDir(app, dir) {
@@ -1910,30 +2133,10 @@ async function uniqueName(app, dir, name) {
 function isHidden(name) {
   return name.startsWith(".");
 }
-var HtmlPreviewModal = class extends import_obsidian4.Modal {
-  constructor(app, filePath) {
-    super(app);
-    this.filePath = filePath;
-  }
-  onOpen() {
-    this.modalEl.addClass("sd-html-modal");
-    this.titleEl.setText(this.filePath.split("/").pop() || this.filePath);
-    const { contentEl } = this;
-    contentEl.empty();
-    const url = this.app.vault.adapter.getResourcePath(this.filePath);
-    contentEl.createEl("iframe", {
-      cls: "sd-html-frame",
-      attr: { src: url }
-    });
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
 
 // src/drive/FileBrowserModal.ts
-var import_obsidian5 = require("obsidian");
-var FileBrowserModal = class extends import_obsidian5.Modal {
+var import_obsidian6 = require("obsidian");
+var FileBrowserModal = class extends import_obsidian6.Modal {
   constructor(app, onChoose, startDir) {
     super(app);
     this.currentDir = "/";
@@ -2008,7 +2211,7 @@ var FileBrowserModal = class extends import_obsidian5.Modal {
     for (const r of rows) {
       const row = el.createDiv({ cls: "sd-browser-row" });
       const icon = row.createSpan({ cls: "sd-ticon" });
-      (0, import_obsidian5.setIcon)(icon, r.isFolder ? "folder" : "file");
+      (0, import_obsidian6.setIcon)(icon, r.isFolder ? "folder" : "file");
       row.createSpan({ cls: "sd-title", text: r.name });
       row.addEventListener("click", () => {
         if (r.isFolder) {
@@ -2073,7 +2276,7 @@ var TrackPage = class extends PageComponent {
         cls: "sd-tnode" + (track.id === this.selectedId ? " is-selected" : "")
       });
       const icon = row.createSpan({ cls: "sd-ticon" });
-      (0, import_obsidian6.setIcon)(icon, "music-2");
+      (0, import_obsidian7.setIcon)(icon, "music-2");
       row.createSpan({ cls: "sd-title", text: track.title });
       row.createSpan({
         cls: "sd-count",
@@ -2129,7 +2332,7 @@ var TrackPage = class extends PageComponent {
       );
       this.plugin.persist();
       this.renderList(this.container.querySelector(".sd-wiki-tree"));
-      new import_obsidian6.Notice("\u5DF2\u4FDD\u5B58");
+      new import_obsidian7.Notice("\u5DF2\u4FDD\u5B58");
     });
     const btnDelete = actions.createEl("button", {
       cls: "sd-btn-danger",
@@ -2230,16 +2433,16 @@ var TrackPage = class extends PageComponent {
         (t) => t.id === trackId ? { ...t, notePaths: [...t.notePaths, targetPath] } : t
       );
       await this.plugin.persist();
-      new import_obsidian6.Notice(`\u5DF2\u4E0A\u4F20\uFF1A${name}`);
+      new import_obsidian7.Notice(`\u5DF2\u4E0A\u4F20\uFF1A${name}`);
       this.render(this.container);
     } catch (e) {
-      new import_obsidian6.Notice("\u4E0A\u4F20\u5931\u8D25\uFF1A" + ((e == null ? void 0 : e.message) || String(e)));
+      new import_obsidian7.Notice("\u4E0A\u4F20\u5931\u8D25\uFF1A" + ((e == null ? void 0 : e.message) || String(e)));
     }
   }
 };
 
 // src/drive/DrivePage.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 var DrivePage = class extends PageComponent {
   constructor() {
     super(...arguments);
@@ -2341,7 +2544,7 @@ var DrivePage = class extends PageComponent {
     for (const e of entries) {
       const row = list.createDiv({ cls: "sd-drive-row" });
       const icon = row.createSpan({ cls: "sd-drive-icon" });
-      (0, import_obsidian7.setIcon)(icon, e.isFolder ? "folder" : this.fileIcon(e.name));
+      (0, import_obsidian8.setIcon)(icon, e.isFolder ? "folder" : this.fileIcon(e.name));
       row.createSpan({ cls: "sd-drive-name", text: e.name });
       const metaText = e.isFolder ? "\u6587\u4EF6\u5939" : this.fmtSize(e.size) + (e.mtime ? " \xB7 " + this.fmtDate(e.mtime) : "");
       row.createSpan({ cls: "sd-drive-meta", text: metaText });
@@ -2392,11 +2595,11 @@ var DrivePage = class extends PageComponent {
         await adapter.writeBinary(dir + name, buffer);
         ok++;
       } catch (e) {
-        new import_obsidian7.Notice("\u4E0A\u4F20\u5931\u8D25\uFF1A" + file.name);
+        new import_obsidian8.Notice("\u4E0A\u4F20\u5931\u8D25\uFF1A" + file.name);
       }
     }
     if (ok)
-      new import_obsidian7.Notice(`\u5DF2\u4E0A\u4F20 ${ok} \u4E2A\u6587\u4EF6`);
+      new import_obsidian8.Notice(`\u5DF2\u4E0A\u4F20 ${ok} \u4E2A\u6587\u4EF6`);
     this.render(this.container);
   }
   // ===== 新建文件夹 =====
@@ -2408,7 +2611,7 @@ var DrivePage = class extends PageComponent {
     const target = dir + name.trim();
     const adapter = this.plugin.app.vault.adapter;
     if (await adapter.exists(target)) {
-      new import_obsidian7.Notice("\u5DF2\u5B58\u5728\u540C\u540D\u6587\u4EF6\u5939");
+      new import_obsidian8.Notice("\u5DF2\u5B58\u5728\u540C\u540D\u6587\u4EF6\u5939");
       return;
     }
     await adapter.mkdir(target);
@@ -2470,7 +2673,7 @@ var DrivePage = class extends PageComponent {
     return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
   }
 };
-var ConfirmModal = class extends import_obsidian7.Modal {
+var ConfirmModal = class extends import_obsidian8.Modal {
   constructor(app, message, onConfirm) {
     super(app);
     this.message = message;
@@ -2495,7 +2698,7 @@ var ConfirmModal = class extends import_obsidian7.Modal {
 
 // src/view/StudyDeskView.ts
 var VIEW_TYPE_STUDY_DESK = "study-desk-main";
-var StudyDeskView = class extends import_obsidian8.ItemView {
+var StudyDeskView = class extends import_obsidian9.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.activeId = "dashboard";
@@ -2555,7 +2758,7 @@ var StudyDeskView = class extends import_obsidian8.ItemView {
     const main = container.createDiv({ cls: "sd-main" });
     const brand = sidebar.createDiv({ cls: "sd-nav-brand" });
     const mark = brand.createSpan({ cls: "sd-nav-mark" });
-    (0, import_obsidian8.setIcon)(mark, "music");
+    (0, import_obsidian9.setIcon)(mark, "music");
     brand.createSpan({ cls: "sd-nav-name", text: "\u97F3\u4E50\u5B66\u4E60\u53F0" });
     brand.createSpan({ cls: "sd-nav-ver", text: "v0.3" });
     for (const group of this.groups) {
@@ -2566,7 +2769,7 @@ var StudyDeskView = class extends import_obsidian8.ItemView {
           cls: "sd-nav-item" + (isActive ? " is-active" : "") + (item.dim ? " is-dim" : "")
         });
         const icon = el.createSpan({ cls: "sd-nav-icon" });
-        (0, import_obsidian8.setIcon)(icon, item.icon);
+        (0, import_obsidian9.setIcon)(icon, item.icon);
         el.createSpan({ cls: "sd-nav-label-text", text: item.title });
         if (item.id === "flashcard") {
           const due = dueCardsToday(this.plugin.data);
@@ -2576,7 +2779,7 @@ var StudyDeskView = class extends import_obsidian8.ItemView {
         }
         el.addEventListener("click", () => {
           if (item.dim) {
-            new import_obsidian8.Notice(`${item.title}\u5C06\u5728\u540E\u7EED\u7248\u672C\u63A8\u51FA`);
+            new import_obsidian9.Notice(`${item.title}\u5C06\u5728\u540E\u7EED\u7248\u672C\u63A8\u51FA`);
             return;
           }
           if (item.action) {
@@ -2611,7 +2814,7 @@ var StudyDeskView = class extends import_obsidian8.ItemView {
 };
 
 // main.ts
-var StudyDeskPlugin = class extends import_obsidian9.Plugin {
+var StudyDeskPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.data = {
@@ -2634,12 +2837,16 @@ var StudyDeskPlugin = class extends import_obsidian9.Plugin {
       VIEW_TYPE_STUDY_DESK,
       (leaf) => new StudyDeskView(leaf, this)
     );
+    this.registerView(
+      VIEW_TYPE_HTML,
+      (leaf) => new HtmlFileView(leaf)
+    );
     this.addSettingTab(new StudyDeskSettingTab(this.app, this));
     this.addRibbonIcon("music", "\u97F3\u4E50\u5B66\u4E60\u53F0", () => {
       this.activateView();
     });
     this.addCommand({
-      id: "open-study-desk",
+      id: "open",
       name: "\u6253\u5F00\u97F3\u4E50\u5B66\u4E60\u53F0",
       callback: () => this.activateView()
     });
@@ -2660,7 +2867,7 @@ var StudyDeskPlugin = class extends import_obsidian9.Plugin {
     await savePluginData(this, this.data);
   }
 };
-var StudyDeskSettingTab = class extends import_obsidian9.PluginSettingTab {
+var StudyDeskSettingTab = class extends import_obsidian10.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -2669,7 +2876,7 @@ var StudyDeskSettingTab = class extends import_obsidian9.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "\u97F3\u4E50\u5B66\u4E60\u53F0 \xB7 \u8BBE\u7F6E" });
-    new import_obsidian9.Setting(containerEl).setName("\u638C\u63E1\u5EA6\u8BA1\u7B97\u6743\u91CD\uFF08\u95EA\u5361\uFF09").setDesc("\u638C\u63E1\u5EA6 = \u95EA\u5361\u6B63\u786E\u7387 \xD7 \u8BE5\u6743\u91CD + \u6253\u5361\u5747\u5206 \xD7 (1 \u2212 \u8BE5\u6743\u91CD)").addText(
+    new import_obsidian10.Setting(containerEl).setName("\u638C\u63E1\u5EA6\u8BA1\u7B97\u6743\u91CD\uFF08\u95EA\u5361\uFF09").setDesc("\u638C\u63E1\u5EA6 = \u95EA\u5361\u6B63\u786E\u7387 \xD7 \u8BE5\u6743\u91CD + \u6253\u5361\u5747\u5206 \xD7 (1 \u2212 \u8BE5\u6743\u91CD)").addText(
       (text) => text.setValue(
         String(Math.round(this.plugin.data.settings.weightFlashcard * 100))
       ).onChange(async (value) => {
@@ -2682,13 +2889,13 @@ var StudyDeskSettingTab = class extends import_obsidian9.PluginSettingTab {
         await this.plugin.persist();
       })
     );
-    new import_obsidian9.Setting(containerEl).setName("\u89C6\u9891\u6587\u4EF6\u76EE\u5F55").setDesc("\u6253\u5361\u89C6\u9891\u4FDD\u5B58\u5230\u7684 vault \u5185\u8DEF\u5F84").addText(
+    new import_obsidian10.Setting(containerEl).setName("\u89C6\u9891\u6587\u4EF6\u76EE\u5F55").setDesc("\u6253\u5361\u89C6\u9891\u4FDD\u5B58\u5230\u7684 vault \u5185\u8DEF\u5F84").addText(
       (text) => text.setValue(this.plugin.data.settings.videoDir).onChange(async (value) => {
         this.plugin.data.settings.videoDir = value;
         await this.plugin.persist();
       })
     );
-    new import_obsidian9.Setting(containerEl).setName("\u6BCF\u65E5\u65B0\u5361\u4E0A\u9650").setDesc("\u6BCF\u5929\u6700\u591A\u5F15\u5165\u7684\u65B0\u5361\u7247\u6570\u91CF").addText(
+    new import_obsidian10.Setting(containerEl).setName("\u6BCF\u65E5\u65B0\u5361\u4E0A\u9650").setDesc("\u6BCF\u5929\u6700\u591A\u5F15\u5165\u7684\u65B0\u5361\u7247\u6570\u91CF").addText(
       (text) => text.setValue(String(this.plugin.data.settings.dailyNewCardLimit)).onChange(async (value) => {
         const n = Number(value);
         if (isNaN(n) || n < 0)
