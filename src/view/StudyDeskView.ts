@@ -7,6 +7,7 @@ import { FlashcardPage } from "../flashcard/FlashcardView";
 import { CheckinPage } from "../checkin/CheckinView";
 import { TrackPage } from "../track/TrackPage";
 import { DrivePage } from "../drive/DrivePage";
+import { SchedulePage } from "../schedule/SchedulePage";
 import { dueCardsToday } from "../dashboard/aggregation";
 
 export const VIEW_TYPE_STUDY_DESK = "study-desk-main";
@@ -42,7 +43,7 @@ export class StudyDeskView extends ItemView {
         items: [
           { id: "dashboard", title: "Dashboard", icon: "gauge", comp: new DashboardPage(plugin) },
           { id: "drive", title: "关联网盘", icon: "hard-drive", comp: new DrivePage(plugin) },
-          { id: "calendar", title: "日程管理", icon: "calendar", dim: true },
+          { id: "calendar", title: "日程管理", icon: "calendar", comp: new SchedulePage(plugin) },
           { id: "experts", title: "专家团", icon: "users", dim: true },
         ],
       },
@@ -102,7 +103,10 @@ export class StudyDeskView extends ItemView {
     const mark = brand.createSpan({ cls: "sd-nav-mark" });
     setIcon(mark, "music");
     brand.createSpan({ cls: "sd-nav-name", text: "音乐学习台" });
-    brand.createSpan({ cls: "sd-nav-ver", text: "v0.3" });
+    brand.createSpan({
+      cls: "sd-nav-ver",
+      text: "v" + this.plugin.manifest.version,
+    });
 
     // 分组导航
     for (const group of this.groups) {

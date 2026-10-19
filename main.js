@@ -31,7 +31,7 @@ __export(main_exports, {
   default: () => StudyDeskPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian10 = require("obsidian");
+var import_obsidian11 = require("obsidian");
 
 // src/types.ts
 var DATA_VERSION = 1;
@@ -78,7 +78,7 @@ function migrate(raw) {
 }
 
 // src/view/StudyDeskView.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/view/PageComponent.ts
 var PageComponent = class {
@@ -2698,9 +2698,252 @@ var ConfirmModal = class extends import_obsidian8.Modal {
   }
 };
 
+// src/schedule/SchedulePage.ts
+var import_obsidian9 = require("obsidian");
+var PRESET_OPTIONS = [
+  { value: null, label: "\u901A\u7528\u65E5\u7A0B" },
+  { value: "checkin", label: "\u6253\u5361\u7EC3\u4E60" }
+];
+var SchedulePage = class extends PageComponent {
+  constructor() {
+    super(...arguments);
+    // 表单临时状态
+    this.title = "";
+    this.date = "";
+    this.tags = [];
+    this.preset = null;
+    this.note = "";
+    this.tagInput = "";
+  }
+  render(container) {
+    this.container = container;
+    container.empty();
+    container.addClass("study-desk-page");
+    container.createEl("h2", { text: "\u65E5\u7A0B\u7BA1\u7406" });
+    container.createEl("div", {
+      cls: "sd-subtitle",
+      text: "\u521B\u5EFA\u65E5\u7A0B \xB7 \u6DFB\u52A0\u6807\u7B7E \xB7 \u9884\u8BBE\u6253\u5361\u7EC3\u4E60"
+    });
+    const grid = container.createDiv({ cls: "sd-sched-grid" });
+    this.renderForm(grid.createDiv({ cls: "sd-sched-form" }));
+    this.renderList(grid.createDiv({ cls: "sd-sched-list" }));
+  }
+  // ===== 左侧：新建表单 =====
+  renderForm(pane) {
+    var _a, _b;
+    pane.empty();
+    pane.createEl("h3", { text: "\u65B0\u5EFA\u65E5\u7A0B" });
+    const tField = pane.createDiv({ cls: "sd-field" });
+    tField.createEl("label", { text: "\u6807\u9898" });
+    const tInput = tField.createEl("input", {
+      attr: { type: "text", placeholder: "\u5982\uFF1A\u7EC3\u4E60\u300A\u8F66\u5C14\u5C3C\u300B\u7B2C 10 \u6761" }
+    });
+    tInput.value = this.title;
+    tInput.addEventListener("input", () => {
+      this.title = tInput.value;
+    });
+    const dField = pane.createDiv({ cls: "sd-field" });
+    dField.createEl("label", { text: "\u65E5\u671F\u65F6\u95F4" });
+    const dInput = dField.createEl("input", { attr: { type: "datetime-local" } });
+    dInput.value = this.date;
+    dInput.addEventListener("input", () => {
+      this.date = dInput.value;
+    });
+    const pField = pane.createDiv({ cls: "sd-field" });
+    pField.createEl("label", { text: "\u9884\u8BBE\u7C7B\u578B" });
+    const pSelect = pField.createEl("select");
+    for (const opt of PRESET_OPTIONS) {
+      pSelect.createEl("option", {
+        text: opt.label,
+        attr: { value: (_a = opt.value) != null ? _a : "" }
+      });
+    }
+    pSelect.value = (_b = this.preset) != null ? _b : "";
+    pSelect.addEventListener("change", () => {
+      this.preset = pSelect.value === "" ? null : pSelect.value;
+    });
+    if (this.preset === "checkin") {
+      pField.createEl("div", {
+        cls: "sd-sched-hint",
+        text: "\u8BE5\u65E5\u7A0B\u5C06\u6807\u8BB0\u4E3A\u300C\u6253\u5361\u7EC3\u4E60\u300D\uFF0C\u5B8C\u6210\u540E\u53EF\u56DE\u586B\u8BC4\u5206\u3002"
+      });
+    }
+    const tagField = pane.createDiv({ cls: "sd-field" });
+    tagField.createEl("label", { text: "\u6807\u7B7E" });
+    this.renderTagPills(tagField);
+    const tagRow = tagField.createDiv({ cls: "sd-tag-row" });
+    const tagInput = tagRow.createEl("input", {
+      attr: { type: "text", placeholder: "\u8F93\u5165\u6807\u7B7E\u540E\u56DE\u8F66\u6DFB\u52A0" }
+    });
+    tagInput.value = this.tagInput;
+    tagInput.addEventListener("input", () => {
+      this.tagInput = tagInput.value;
+    });
+    tagInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.addTag();
+        this.renderForm(this.container.querySelector(".sd-sched-form"));
+      }
+    });
+    const btnTag = tagRow.createEl("button", { text: "\u6DFB\u52A0" });
+    btnTag.addEventListener("click", () => {
+      this.addTag();
+      this.renderForm(this.container.querySelector(".sd-sched-form"));
+    });
+    const nField = pane.createDiv({ cls: "sd-field" });
+    nField.createEl("label", { text: "\u5907\u6CE8\uFF08\u53EF\u9009\uFF09" });
+    const nArea = nField.createEl("textarea", {
+      attr: { placeholder: "\u8865\u5145\u8BF4\u660E\u2026" }
+    });
+    nArea.value = this.note;
+    nArea.addEventListener("input", () => {
+      this.note = nArea.value;
+    });
+    const btnSubmit = pane.createEl("button", {
+      cls: "mod-cta",
+      text: "\u521B\u5EFA\u65E5\u7A0B"
+    });
+    btnSubmit.addEventListener("click", () => this.submit());
+  }
+  renderTagPills(container) {
+    const box = container.createDiv({ cls: "sd-pills" });
+    if (this.tags.length === 0) {
+      box.createEl("div", { cls: "sd-empty-sm", text: "\u5C1A\u672A\u6DFB\u52A0\u6807\u7B7E" });
+      return;
+    }
+    for (const tag of this.tags) {
+      const pill = box.createSpan({ cls: "sd-pill sd-tag-pill", text: `#${tag} \u2715` });
+      pill.addEventListener("click", () => {
+        this.tags = this.tags.filter((x2) => x2 !== tag);
+        this.renderForm(this.container.querySelector(".sd-sched-form"));
+      });
+    }
+  }
+  addTag() {
+    const t = this.tagInput.trim().replace(/^#/, "");
+    if (!t)
+      return;
+    if (!this.tags.includes(t))
+      this.tags.push(t);
+    this.tagInput = "";
+  }
+  submit() {
+    if (!this.title.trim()) {
+      new import_obsidian9.Notice("\u8BF7\u586B\u5199\u65E5\u7A0B\u6807\u9898");
+      return;
+    }
+    if (!this.date) {
+      new import_obsidian9.Notice("\u8BF7\u9009\u62E9\u65E5\u671F\u65F6\u95F4");
+      return;
+    }
+    const ts = new Date(this.date).getTime();
+    if (isNaN(ts)) {
+      new import_obsidian9.Notice("\u65E5\u671F\u65F6\u95F4\u683C\u5F0F\u65E0\u6548");
+      return;
+    }
+    const sched = {
+      id: genId(),
+      title: this.title.trim(),
+      date: ts,
+      tags: [...this.tags],
+      preset: this.preset,
+      done: false,
+      note: this.note || void 0,
+      createdAt: Date.now()
+    };
+    this.plugin.data.schedules.push(sched);
+    this.title = "";
+    this.date = "";
+    this.tags = [];
+    this.preset = null;
+    this.note = "";
+    this.tagInput = "";
+    this.plugin.persist();
+    new import_obsidian9.Notice("\u65E5\u7A0B\u5DF2\u521B\u5EFA");
+    this.render(this.container);
+  }
+  // ===== 右侧：日程列表 =====
+  renderList(pane) {
+    pane.empty();
+    const head = pane.createDiv({ cls: "sd-list-head" });
+    head.createEl("h3", { text: "\u65E5\u7A0B\u5217\u8868" });
+    head.createEl("span", {
+      cls: "sd-count",
+      text: `\u5171 ${this.plugin.data.schedules.length} \u6761`
+    });
+    const list = pane.createDiv({ cls: "sd-sched-items" });
+    const schedules = [...this.plugin.data.schedules].sort((a, b2) => a.date - b2.date);
+    if (schedules.length === 0) {
+      list.createEl("div", {
+        cls: "sd-empty",
+        text: "\u8FD8\u6CA1\u6709\u65E5\u7A0B\n\u5728\u5DE6\u4FA7\u521B\u5EFA\u4F60\u7684\u7B2C\u4E00\u4E2A\u65E5\u7A0B"
+      });
+      return;
+    }
+    for (const s of schedules) {
+      list.appendChild(this.renderItem(s));
+    }
+  }
+  renderItem(s) {
+    const item = document.createElement("div");
+    item.className = "sd-sched-item" + (s.done ? " is-done" : "");
+    const cb = item.createEl("input", { attr: { type: "checkbox" } });
+    cb.checked = s.done;
+    cb.addEventListener("change", () => {
+      s.done = cb.checked;
+      this.plugin.persist();
+      this.render(this.container);
+    });
+    const info = item.createDiv({ cls: "sd-sched-info" });
+    info.createDiv({ cls: "sd-sched-title", text: s.title });
+    const meta = info.createDiv({ cls: "sd-sched-meta" });
+    meta.createSpan({ cls: "sd-sched-date", text: this.formatDate(s.date) });
+    if (s.preset === "checkin") {
+      meta.createSpan({ cls: "sd-pill sd-good", text: "\u6253\u5361\u7EC3\u4E60" });
+    }
+    if (s.tags.length) {
+      for (const tag of s.tags) {
+        meta.createSpan({ cls: "sd-pill sd-pill-idle", text: `#${tag}` });
+      }
+    }
+    if (s.note) {
+      info.createDiv({ cls: "sd-sched-note", text: s.note });
+    }
+    const del = item.createEl("button", { cls: "sd-btn-del", text: "\u5220\u9664" });
+    del.addEventListener("click", () => {
+      this.plugin.data.schedules = this.plugin.data.schedules.filter(
+        (x2) => x2.id !== s.id
+      );
+      this.plugin.persist();
+      this.render(this.container);
+    });
+    return item;
+  }
+  formatDate(ts) {
+    const d = new Date(ts);
+    const now = /* @__PURE__ */ new Date();
+    const p2 = (n) => String(n).padStart(2, "0");
+    const dateStr = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    const timeStr = `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const startOf = (x2) => new Date(x2.getFullYear(), x2.getMonth(), x2.getDate()).getTime();
+    const dayDiff = Math.round(
+      (startOf(d) - startOf(now)) / (24 * 60 * 60 * 1e3)
+    );
+    let prefix = dateStr;
+    if (dayDiff === 0)
+      prefix = "\u4ECA\u5929";
+    else if (dayDiff === 1)
+      prefix = "\u660E\u5929";
+    else if (dayDiff === -1)
+      prefix = "\u6628\u5929";
+    return `${prefix} ${timeStr}`;
+  }
+};
+
 // src/view/StudyDeskView.ts
 var VIEW_TYPE_STUDY_DESK = "study-desk-main";
-var StudyDeskView = class extends import_obsidian9.ItemView {
+var StudyDeskView = class extends import_obsidian10.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.activeId = "dashboard";
@@ -2711,7 +2954,7 @@ var StudyDeskView = class extends import_obsidian9.ItemView {
         items: [
           { id: "dashboard", title: "Dashboard", icon: "gauge", comp: new DashboardPage(plugin) },
           { id: "drive", title: "\u5173\u8054\u7F51\u76D8", icon: "hard-drive", comp: new DrivePage(plugin) },
-          { id: "calendar", title: "\u65E5\u7A0B\u7BA1\u7406", icon: "calendar", dim: true },
+          { id: "calendar", title: "\u65E5\u7A0B\u7BA1\u7406", icon: "calendar", comp: new SchedulePage(plugin) },
           { id: "experts", title: "\u4E13\u5BB6\u56E2", icon: "users", dim: true }
         ]
       },
@@ -2760,9 +3003,12 @@ var StudyDeskView = class extends import_obsidian9.ItemView {
     const main = container.createDiv({ cls: "sd-main" });
     const brand = sidebar.createDiv({ cls: "sd-nav-brand" });
     const mark = brand.createSpan({ cls: "sd-nav-mark" });
-    (0, import_obsidian9.setIcon)(mark, "music");
+    (0, import_obsidian10.setIcon)(mark, "music");
     brand.createSpan({ cls: "sd-nav-name", text: "\u97F3\u4E50\u5B66\u4E60\u53F0" });
-    brand.createSpan({ cls: "sd-nav-ver", text: "v0.3" });
+    brand.createSpan({
+      cls: "sd-nav-ver",
+      text: "v" + this.plugin.manifest.version
+    });
     for (const group of this.groups) {
       sidebar.createDiv({ cls: "sd-nav-label", text: group.label });
       for (const item of group.items) {
@@ -2771,7 +3017,7 @@ var StudyDeskView = class extends import_obsidian9.ItemView {
           cls: "sd-nav-item" + (isActive ? " is-active" : "") + (item.dim ? " is-dim" : "")
         });
         const icon = el.createSpan({ cls: "sd-nav-icon" });
-        (0, import_obsidian9.setIcon)(icon, item.icon);
+        (0, import_obsidian10.setIcon)(icon, item.icon);
         el.createSpan({ cls: "sd-nav-label-text", text: item.title });
         if (item.id === "flashcard") {
           const due = dueCardsToday(this.plugin.data);
@@ -2781,7 +3027,7 @@ var StudyDeskView = class extends import_obsidian9.ItemView {
         }
         el.addEventListener("click", () => {
           if (item.dim) {
-            new import_obsidian9.Notice(`${item.title}\u5C06\u5728\u540E\u7EED\u7248\u672C\u63A8\u51FA`);
+            new import_obsidian10.Notice(`${item.title}\u5C06\u5728\u540E\u7EED\u7248\u672C\u63A8\u51FA`);
             return;
           }
           if (item.action) {
@@ -2816,7 +3062,7 @@ var StudyDeskView = class extends import_obsidian9.ItemView {
 };
 
 // main.ts
-var StudyDeskPlugin = class extends import_obsidian10.Plugin {
+var StudyDeskPlugin = class extends import_obsidian11.Plugin {
   constructor() {
     super(...arguments);
     this.data = {
@@ -2870,7 +3116,7 @@ var StudyDeskPlugin = class extends import_obsidian10.Plugin {
     await savePluginData(this, this.data);
   }
 };
-var StudyDeskSettingTab = class extends import_obsidian10.PluginSettingTab {
+var StudyDeskSettingTab = class extends import_obsidian11.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -2879,7 +3125,7 @@ var StudyDeskSettingTab = class extends import_obsidian10.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "\u97F3\u4E50\u5B66\u4E60\u53F0 \xB7 \u8BBE\u7F6E" });
-    new import_obsidian10.Setting(containerEl).setName("\u638C\u63E1\u5EA6\u8BA1\u7B97\u6743\u91CD\uFF08\u95EA\u5361\uFF09").setDesc("\u638C\u63E1\u5EA6 = \u95EA\u5361\u6B63\u786E\u7387 \xD7 \u8BE5\u6743\u91CD + \u6253\u5361\u5747\u5206 \xD7 (1 \u2212 \u8BE5\u6743\u91CD)").addText(
+    new import_obsidian11.Setting(containerEl).setName("\u638C\u63E1\u5EA6\u8BA1\u7B97\u6743\u91CD\uFF08\u95EA\u5361\uFF09").setDesc("\u638C\u63E1\u5EA6 = \u95EA\u5361\u6B63\u786E\u7387 \xD7 \u8BE5\u6743\u91CD + \u6253\u5361\u5747\u5206 \xD7 (1 \u2212 \u8BE5\u6743\u91CD)").addText(
       (text) => text.setValue(
         String(Math.round(this.plugin.data.settings.weightFlashcard * 100))
       ).onChange(async (value) => {
@@ -2892,13 +3138,13 @@ var StudyDeskSettingTab = class extends import_obsidian10.PluginSettingTab {
         await this.plugin.persist();
       })
     );
-    new import_obsidian10.Setting(containerEl).setName("\u89C6\u9891\u6587\u4EF6\u76EE\u5F55").setDesc("\u6253\u5361\u89C6\u9891\u4FDD\u5B58\u5230\u7684 vault \u5185\u8DEF\u5F84").addText(
+    new import_obsidian11.Setting(containerEl).setName("\u89C6\u9891\u6587\u4EF6\u76EE\u5F55").setDesc("\u6253\u5361\u89C6\u9891\u4FDD\u5B58\u5230\u7684 vault \u5185\u8DEF\u5F84").addText(
       (text) => text.setValue(this.plugin.data.settings.videoDir).onChange(async (value) => {
         this.plugin.data.settings.videoDir = value;
         await this.plugin.persist();
       })
     );
-    new import_obsidian10.Setting(containerEl).setName("\u6BCF\u65E5\u65B0\u5361\u4E0A\u9650").setDesc("\u6BCF\u5929\u6700\u591A\u5F15\u5165\u7684\u65B0\u5361\u7247\u6570\u91CF").addText(
+    new import_obsidian11.Setting(containerEl).setName("\u6BCF\u65E5\u65B0\u5361\u4E0A\u9650").setDesc("\u6BCF\u5929\u6700\u591A\u5F15\u5165\u7684\u65B0\u5361\u7247\u6570\u91CF").addText(
       (text) => text.setValue(String(this.plugin.data.settings.dailyNewCardLimit)).onChange(async (value) => {
         const n = Number(value);
         if (isNaN(n) || n < 0)
